@@ -11,22 +11,32 @@ data SnakeState = SnakeState {body :: [(Int, Int)], momentum :: (Int, Int)}
 snakeSignal :: Signal SnakeState
 snakeSignal = moveSignal
   where
-    orthogonal (x, y) dt | x == 0    = ((0, y), dt)
-                         | otherwise = ((x, 0), dt)
+    orthogonal (x, y) | x == 0    = (0, y)
+                      | otherwise = (x, 0)
 
-    initialState = SnakeState { body = [(0,0), (0,1), (0,2), (1,2)], momentum = (0, 1) }
-    newState :: ((Int, Int), Double) -> SnakeState -> SnakeState
-    newState ((dx, dy), dt) state = state { body = body', momentum = momentum' }
+    initialState = SnakeState { body = map (\x -> (0, x)) [-6..0], momentum = (0, 1) }
+
+    newState :: Either (Int, Int) Double -> SnakeState -> SnakeState
+    newState (Left (dx, dy)) state =
+        state { body = body state
+              , momentum = momentum' }
       where
         momentum' | (dx, dy) == (0, 0) = momentum state
                   | otherwise          = (dx, dy)
+
+    newState (Right dt) state =
+        state { body = body'
+              , momentum = momentum state }
+      where
         body' = (tail . body $ state) ++ [next]
-        next = (x + mx, y + my)
-        (mx, my) = momentum state
-        (x, y) = last . body $ state
+        next  = let (mx, my) = momentum state
+                    (x, y) = last . body $ state
+                in (x + mx, y + my)
 
     moveSignal = foldp newState initialState
-        (orthogonal <~ Keyboard.arrows ~~ stepSignal)
+        (mux (Right 0) [ (Left . orthogonal) <~ Keyboard.arrows
+                       , Right <~ stepSignal])
+
 
 stepSignal :: Signal Double
 stepSignal = signal
@@ -35,6 +45,15 @@ stepSignal = signal
     step :: Time -> Double -> Double
     step dt n = n + Time.inSeconds dt
 
+
+mux :: Eq a => a -> [Signal a] -> Signal a
+mux def xs = snd <~ (foldp select ([def], def) $ combine xs)
+  where
+    select xs (old, result) = (xs, result')
+      where
+        result' | diff == [] = result
+                | otherwise  = snd . head $ diff
+        diff = filter (\(o, n) -> o /= n) $ zip old xs
 
 
 
@@ -46,7 +65,7 @@ block x y = move (fromIntegral $ 40 * x, fromIntegral $ 40 * y) $
     filled white $ rect 40 40
 
 snake :: SnakeState -> [Form]
-snake state = map (\(x, y) -> block x y) $ body state
+snake state = map (\(x, y) -> block x y) . body $ state
 
 render :: SnakeState -> (Int, Int) -> Element
 render state (w, h) = centeredCollage w h $ [frame] ++ snake state
