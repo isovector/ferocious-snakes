@@ -1,5 +1,6 @@
 module Main where
 
+import Data.Default
 import FRP.Helm
 import FRP.Helm.Signal
 import qualified FRP.Helm.Time as Time
@@ -34,8 +35,8 @@ snakeSignal = moveSignal
                 in (x + mx, y + my)
 
     moveSignal = foldp newState initialState
-        (mux (Right 0) [ (Left . orthogonal) <~ Keyboard.arrows
-                       , Right <~ stepSignal])
+        (mux  [ (Left . orthogonal) <~ Keyboard.arrows
+              , Right <~ stepSignal])
 
 
 stepSignal :: Signal Double
@@ -46,8 +47,12 @@ stepSignal = signal
     step dt n = n + Time.inSeconds dt
 
 
-mux :: Eq a => a -> [Signal a] -> Signal a
-mux def xs = snd <~ (foldp select ([def], def) $ combine xs)
+{-Ensure our Either value is constructable with a mux-}
+instance (Default b) => Default (Either a b) where
+    def = Right def
+
+mux :: (Eq a, Default a) => [Signal a] -> Signal a
+mux xs = snd <~ (foldp select def $ combine xs)
   where
     select xs (old, result) = (xs, result')
       where
